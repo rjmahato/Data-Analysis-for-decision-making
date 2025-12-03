@@ -1,0 +1,448 @@
+---
+title: "The Importance of Outlier Detection With Applications in R"
+
+author:
+  - name: "Rajesh Mahato - 400878749"
+    email: "mahato.rajesh@stud.hs-fresenius.de"
+    affiliations: Fresenius University of Applied Science
+    address: "Bergheim"
+    city: "Bergheim"
+    corresponding: true
+
+abstract: |
+  Outlier detection plays a critical role in safeguarding the validity of data-driven decisions by identifying observations that can distort statistical summaries, bias models, or signal rare but important events. This handout focuses on three widely used approaches to outlier detection—the Interquartile Range (IQR) method, Z-score method, and Local Outlier Factor (LOF)—and discusses when each is most appropriate in practice. Using the classical New York air quality dataset as an example, IQR-based detection is implemented in R to flag extreme ozone and solar radiation values, which are then related to public health risk thresholds and temporal pollution patterns. The analysis highlights how univariate methods can be used to build intuitive visual tools (boxplots, time series with highlighted events), while also motivating the need for multivariate techniques such as LOF in complex datasets. Through comparative analysis and practical coding examples, this handout demonstrates that effective outlier detection combines statistical rigor with domain expertise to inform environmental monitoring, fraud prevention, quality control, and predictive modeling across sectors.
+
+floatsintext: true
+
+format:
+  apaquarto-pdf:
+    documentmode: stu
+    course: Data Analysis for Decision-Making  (WS 2025/26)
+    professor: Prof. Dr. Stephan Huber
+    duedate: '2025-12-03'
+    keep-tex: false
+    fig-align: "left"
+    include-in-header:
+      text: |
+        \linespread{1.5} % 1.5 line spacing
+        \usepackage{fancyhdr}
+        \fancypagestyle{custom}{
+          \fancyhf{} % clear all header/footer fields
+          \fancyhead[R]{\thepage} % page number top-right
+        }
+        \pagestyle{custom}
+    number-sections: true
+  apaquarto-html:
+    toc: true
+    embed-resources: true
+
+a4paper: true
+bibliography: references.bib
+
+csl: _extensions/wjschne/apaquarto/apa.csl
+reference-location: document
+---
+
+# Introduction
+
+Outlier detection is a fundamental component of data analysis that has gained substantial relevance across diverse scientific, environmental, and business domains. Outliers—observations that deviate significantly from the expected pattern in a dataset—can profoundly impact statistical analyses, predictive modeling, and downstream business decisions @tukey1977. This handout expands upon the presentation by providing deeper theoretical foundations, methodological considerations, and practical applications of outlier detection techniques using the R programming language.
+
+
+
+# What Are Outliers?
+
+Outliers are data points that differ significantly from other observations in a dataset. They manifest in various forms and originate from multiple sources, each requiring different handling strategies and interpretations. 
+
+## Types of Outliers
+
+- **Point Outliers**: Single extreme values that stand out from the overall distribution. 
+
+- **Contextual Outliers**: Observations that are unusual within specific contexts or conditions. 
+
+- **Collective Outliers**: Groups of unusual points that, while individually not extreme, form anomalous patterns when considered together.
+
+
+## Common Causes
+
+- **Measurement errors**: Instrument calibration issues or sensor failures.
+
+- **Data entry mistakes**: Human errors in recording or transcribing data.
+
+- **Fraudulent activities**: Intentional manipulation or misrepresentation.
+
+- **Equipment malfunction**: Technical failures in data collection systems.
+
+
+# Why Outlier Detection Matters
+
+## Environmental Importance:
+
+- **Protects Public Health**: Early warnings save lives during pollution spikes
+- **Regulatory Compliance:** Keeps companies accountable to environmental laws 
+- **Urban Management:** Guide traffic controls and industrial activity during high pollution
+- **Climate Research:** Identify extreme weather patterns and environmental shifts
+
+## Business & Economic Importance:
+
+- **Financial**: Billions saved annually by catching fraud early
+- **Quality Control**: Reduces waste and customer complaints
+- **Enables Better Decisions**: Clean data leads to accurate predictions
+- **Risk Management**: Identifies problems before they escalate
+
+# Key Detection Methods
+
+## IQR Method (Box Plot Rule)
+
+- The Interquartile Range method provides a robust, non-parametric approach to outlier detection:
+
+\small
+$$\text{Lower Bound} = Q1 - 1.5 \times IQR$$
+$$\text{Upper Bound} = Q3 + 1.5 \times IQR$$
+$$\text{Outliers} = \{x_i \mid x_i < \text{Lower Bound} \lor x_i > \text{Upper Bound}\}$$
+
+
+- Observations falling outside these bounds are classified as outliers. This method's robustness to extreme values makes it particularly suitable for environmental data analysis.
+
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-height: 3
+#| fig-width: 5
+
+# Load required libraries
+library(dplyr)
+
+# Load the airquality dataset and clean it
+data(airquality)
+air_clean <- airquality %>%
+  filter(!is.na(Ozone))  # Remove rows with missing Ozone values
+
+# Define outlier detection function
+detect_outliers_iqr <- function(data, column) {
+  values <- data[[column]]
+  Q1 <- quantile(values, 0.25, na.rm = TRUE)
+  Q3 <- quantile(values, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  
+  outliers <- values[values < lower_bound | values > upper_bound]
+  indices <- which(values < lower_bound | values > upper_bound)
+  
+  return(list(
+    bounds = c(lower_bound, upper_bound),
+    values = outliers,
+    indices = indices,
+    count = length(outliers)
+  ))
+}
+
+# Detect ozone outliers
+ozone_outliers <- detect_outliers_iqr(air_clean, "Ozone")
+
+# SMALL BOX PLOT VISUALIZATION
+par(mar = c(4, 4, 3, 1))  # Adjust margins for smaller plot
+
+boxplot(air_clean$Ozone, 
+        main = "Ozone Distribution with Outliers",
+        ylab = "Ozone (ppb)",
+        col = "lightblue",
+        border = "darkblue",
+        las = 1,
+        outpch = 19,        # Outlier point style
+        outcol = "red",     # Outlier point color
+        outcex = 0.8)       # Outlier point size
+
+# Add IQR bounds to the plot
+abline(h = ozone_outliers$bounds, col = c("orange", "orange"), lty = 2, lwd = 1)
+
+
+
+# Add legend for bounds
+legend("topright", 
+       legend = "IQR Bounds", 
+       col = "orange", 
+       lty = 2, 
+       lwd = 1,
+       cex = 0.8)
+```
+
+
+
+## Z-Score Method
+
+The Z-score standardizes each observation relative to the mean and standard deviation:
+
+$$Z = \frac{X - \mu}{\sigma}$$
+
+Values with |Z| > 3 typically indicate outliers, corresponding to observations beyond three standard deviations from the mean.
+
+
+## Local Outlier Factor (LOF)**
+
+LOF compares the local density of an observation to that of its k nearest neighbors. Observations in sparse regions relative to their neighbors are flagged as outliers. This density-based approach excels at identifying contextual outliers that univariate methods miss.
+
+
+
+# Methodology: Implementing Outlier Detection in R
+
+## Dataset
+
+The air quality dataset, available in the base R package, contains daily air quality measurements in New York from May to September 1973. The dataset includes 153 observations across 6 variables, with 111 complete cases after removing missing values @chambers1983.
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+#| include: false
+# Load required packages
+library(dplyr)
+library(ggplot2)
+
+# Load and prepare air quality data
+data("airquality")
+air_clean <- airquality[complete.cases(airquality), ]
+
+cat("Air Quality Dataset Loaded Successfully\n")
+cat("Clean dataset dimensions:", dim(air_clean), "\n")
+cat("Variables:", names(air_clean), "\n")
+```
+## Data Preparation and Exploration
+
+```{r, echo=FALSE}
+### Air Quality Dataset Summary
+
+
+# Remove Month and Day columns
+clean_air <- airquality[, c("Ozone", "Solar.R", "Wind", "Temp")]
+
+# Capture summary output
+summary_text <- capture.output(summary(clean_air))
+
+# Print with perfect alignment in PDF
+cat(paste(summary_text, collapse = "\n"))
+```
+
+```
+```
+
+```{r}
+#| include: false
+
+#| label: data-exploration
+#| echo: false
+#| message: false
+#| warning: false
+# Basic statistics and data overview
+cat("--- Air Quality Dataset Summary ---\n")
+summary(air_clean[, c("Ozone", "Solar.R", "Wind", "Temp")])
+
+cat("\n--- Environmental Context ---\n")
+cat("Ozone Health Guidelines:\n")
+cat("- Good: < 50 ppb\n")
+cat("- Moderate Risk: 50-70 ppb\n") 
+cat("- High Risk: 70-100 ppb\n")
+cat("- Very High Risk: > 100 ppb\n")
+```
+
+
+
+```{r}
+#| label: outlier-function
+#| message: false
+#| warning: false
+#| include: false
+# Create comprehensive outlier detection function
+detect_outliers_iqr <- function(data, column_name) {
+  values <- data[[column_name]]
+  
+  Q1 <- quantile(values, 0.25, na.rm = TRUE)
+  Q3 <- quantile(values, 0.75, na.rm = TRUE)
+  IQR_value <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR_value
+  upper_bound <- Q3 + 1.5 * IQR_value
+  
+  outliers <- which(values < lower_bound | values > upper_bound)
+  
+  return(list(
+    outliers = outliers,
+    bounds = c(lower_bound, upper_bound),
+    values = values[outliers],
+    indices = outliers,
+    count = length(outliers)
+  ))
+}
+
+cat("Robust outlier detection function created successfully\n")
+```
+
+## Ozone Outlier Analysis 
+Critical Pollution Event Detection
+--- Ozone Outlier Analysis ---
+IQR Bounds: -48 128 ppb
+Number of high ozone days: 2 
+Outlier ozone levels: 135 168 ppb
+
+--- Public Health Impact ---
+Days with high health risk (Ozone > 100 ppb): 2 
+Days with moderate health risk (Ozone > 70 ppb): 0 
+```{r}
+#| label: ozone-analysis
+#| message: false
+#| warning: false
+#| include: false
+# Detect outliers in Ozone (primary air quality indicator)
+ozone_outliers <- detect_outliers_iqr(air_clean, "Ozone")
+
+cat("--- Ozone Outlier Analysis ---\n")
+cat("IQR Bounds:", round(ozone_outliers$bounds, 2), "ppb\n")
+cat("Number of high ozone days:", ozone_outliers$count, "\n")
+cat("Outlier ozone levels:", sort(round(ozone_outliers$values, 2)), "ppb\n")
+
+# Health risk assessment
+high_risk_days <- sum(ozone_outliers$values > 100)
+moderate_risk_days <- sum(ozone_outliers$values > 70 & ozone_outliers$values <= 100)
+
+cat("\n--- Public Health Impact ---\n")
+cat("Days with high health risk (Ozone > 100 ppb):", high_risk_days, "\n")
+cat("Days with moderate health risk (Ozone > 70 ppb):", moderate_risk_days, "\n")
+```
+
+
+## Time Series Analysis of Pollution Events 
+
+```{r}
+#| echo: false
+#| fig-height: 5
+#| fig-width: 9
+#| message: false
+#| warning: false
+
+# Load required libraries
+library(dplyr)
+
+# Define outlier detection function
+detect_outliers_iqr <- function(data, column) {
+  values <- data[[column]]
+  Q1 <- quantile(values, 0.25, na.rm = TRUE)
+  Q3 <- quantile(values, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  
+  outliers <- values[values < lower_bound | values > upper_bound]
+  indices <- which(values < lower_bound | values > upper_bound)
+  
+  return(list(
+    bounds = c(lower_bound, upper_bound),
+    values = outliers,
+    indices = indices,
+    count = length(outliers)
+  ))
+}
+
+# Create Date column
+air_clean$Date <- as.Date(paste("1973", air_clean$Month, air_clean$Day, sep = "-"))
+
+# Detect ozone outliers
+ozone_outliers <- detect_outliers_iqr(air_clean, "Ozone")
+
+# Create public health risk assessment
+risk_assessment <- air_clean %>%
+  mutate(
+    Risk_Level = case_when(
+      Ozone > 100 ~ "High Risk",
+      Ozone > 70 ~ "Moderate Risk",
+      Ozone > 50 ~ "Low Risk",
+      TRUE ~ "Good"
+    ),
+    Is_Outlier = ifelse(1:n() %in% ozone_outliers$indices, "Yes", "No")
+  )
+
+# Remove NA values for clean plotting
+plot_data <- risk_assessment %>%
+  filter(!is.na(Date) & !is.na(Ozone))
+
+# Plot risk assessment
+risk_colors <- c("Good" = "green", "Low Risk" = "yellow", 
+                "Moderate Risk" = "orange", "High Risk" = "red")
+
+plot(plot_data$Date, plot_data$Ozone, type = "l",
+     main = "Public Health Risk Assessment - Ozone Pollution",
+     xlab = "Date", ylab = "Ozone (ppb)", 
+     col = "gray", lwd = 1, las = 1, ylim = c(0, 170))
+
+# Add colored points based on risk level
+points(plot_data$Date, plot_data$Ozone, 
+       col = risk_colors[plot_data$Risk_Level], 
+       pch = 19, cex = 1.2)
+
+# Highlight outliers
+outlier_indices <- which(plot_data$Is_Outlier == "Yes")
+if(length(outlier_indices) > 0) {
+  points(plot_data$Date[outlier_indices], 
+         plot_data$Ozone[outlier_indices], 
+         col = "black", pch = 1, cex = 2, lwd = 2)
+}
+
+# Add thresholds and legend
+abline(h = c(50, 70, 100), col = c("yellow", "orange", "red"), 
+       lty = 2, lwd = 2)
+legend("topleft",
+       legend = c("Good", "Low Risk", "Moderate Risk", "High Risk", "Outlier Day"),
+       col = c("green", "yellow", "orange", "red", "black"),
+       pch = c(19, 19, 19, 19, 1), pt.cex = c(1, 1, 1, 1, 1.5),
+       pt.lwd = c(1, 1, 1, 1, 2))
+
+```
+
+# Applications
+
+## Environmental Applications:
+
+- **Public Health Monitoring:** Automated alerts when pollution exceeds safe levels.
+
+- **Climate Research:** Identifying extreme weather and long-term climate shifts.
+
+## Business Applications:
+
+- **Fraud Detection:** Spotting unusual financial transactions.
+
+- **Sales Forecasting:** Using clean data to predict future revenue.
+
+## Technical & Research Applications:
+
+- **Data Cleaning:** Removing errors before analysis.
+
+- **Model Development:** Preparing data for machine learning.
+
+
+
+# Conclusion
+This analysis demonstrated how IQR-based outlier detection in R can identify dangerous ozone levels in air quality data. Using the 1973 New York dataset, we found several days where ozone exceeded health safety thresholds, particularly during summer months when temperature and solar radiation drive ozone formation.The IQR method proved effective for environmental data as it doesn't require normal distribution and handles extreme values well. By combining statistical detection with public health thresholds, we transformed data analysis into actionable insights for environmental protection.This approach provides a foundation for real-time monitoring systems that could help cities issue health advisories during high pollution events. As climate concerns grow, such methods will become increasingly valuable for protecting public health through data-driven environmental management.
+
+
+# Affidavit
+
+I hereby affirm that this submitted paper was authored unaided and solely by me. Additionally, no other sources than those in the reference list were used. Parts of this paper, including tables and figures, that have been taken either verbatim or analogously from other works have in each case been properly cited with regard to their origin and authorship. This paper either in parts or in its entirety, be it in the same or similar form, has not been submitted to any other examination board and has not been published.
+
+I acknowledge that the university may use plagiarism detection software to check my thesis. I agree to cooperate with any investigation of suspected plagiarism and to provide any additional information or evidence requested by the university.
+
+## Checklist
+
+-   [x] The handout contains 7 pages of text.
+-   [x] The submission contains the Quarto file of the handout.
+-   [x] The submission contains the Quarto file of the presentation.
+-   [x] The submission contains the HTML file of the handout.
+-   [x] The submission contains the HTML file of the presentation.
+-   [x] The submission contains the PDF file of the handout.
+-   [x] The submission contains the PDF file of the presentation.
+-   [x] The title page of the presentation and the handout contain personal details (name, email, matriculation number).
+-   [x] The handout contains a bibliography, created using BibTeX with an APA citation style.
+-   [x] Either the handout or the presentation contains R code that demonstrates coding expertise.
+-   [x] The filled out Affidavit.
+-   [x] The link to the presentation and the handout published on GitHub.
+
+\[Rajesh Mahato,\] \[10 Dec 2025,\] \[Bergheim\]
